@@ -4,7 +4,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode"
 )
+
+// StripEmoji removes decorative symbol characters (emoji, flags, icons) from s.
+// Uses Unicode General Category So/Sk — no hardcoded ranges.
+// Preserves all meaningful text (letters, digits, CJK, punctuation, spaces).
+func StripEmoji(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if unicode.Is(unicode.So, r) || unicode.Is(unicode.Sk, r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	result := strings.TrimSpace(b.String())
+	for strings.Contains(result, "  ") {
+		result = strings.ReplaceAll(result, "  ", " ")
+	}
+	return result
+}
 
 // ClashProxyInfo represents the proxy information returned by /proxies.
 type ClashProxyInfo struct {

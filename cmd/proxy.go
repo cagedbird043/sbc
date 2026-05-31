@@ -157,7 +157,7 @@ func proxyList() {
 	selectors := internal.GetSelectors(resp)
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	for _, s := range selectors {
-		fmt.Fprintf(w, "%s\t%s\n", s.Name, s.Current)
+		fmt.Fprintf(w, "%s\t%s\n", internal.StripEmoji(s.Name), internal.StripEmoji(s.Current))
 	}
 	w.Flush()
 }
@@ -171,7 +171,7 @@ func proxyGroups() {
 
 	selectors := internal.GetSelectors(resp)
 	for _, s := range selectors {
-		fmt.Println(s.Name)
+		fmt.Println(internal.StripEmoji(s.Name))
 	}
 }
 
@@ -189,18 +189,18 @@ func proxyNodes(filter string) {
 			fmt.Fprintf(os.Stderr, "❌ %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("=== %s ===\n", selector)
+		fmt.Printf("=== %s ===\n", internal.StripEmoji(selector))
 		nodes := internal.GetSelectorNodes(resp, selector)
 		for _, n := range nodes {
-			fmt.Printf("  %s\n", n)
+			fmt.Printf("  %s\n", internal.StripEmoji(n))
 		}
 	} else {
 		selectors := internal.GetSelectors(resp)
 		for _, s := range selectors {
-			fmt.Printf("=== %s （当前: %s）===\n", s.Name, s.Current)
+			fmt.Printf("=== %s （当前: %s）===\n", internal.StripEmoji(s.Name), internal.StripEmoji(s.Current))
 			nodes := internal.GetSelectorNodes(resp, s.Name)
 			for _, n := range nodes {
-				fmt.Printf("  %s\n", n)
+				fmt.Printf("  %s\n", internal.StripEmoji(n))
 			}
 			fmt.Println()
 		}
@@ -273,7 +273,9 @@ func selectorPath(name string) string {
 	return "/proxies/" + url.PathEscape(name)
 }
 
-// completeSelectorNames returns all Selector names for shell completion.
+// completeSelectorNames returns all Selector names for shell completion
+// with emoji stripped for cleaner display. The selected value still
+// matches the original name via substring matching in proxyUse.
 func completeSelectorNames() ([]string, error) {
 	resp, err := fetchProxies()
 	if err != nil {
@@ -282,12 +284,13 @@ func completeSelectorNames() ([]string, error) {
 	selectors := internal.GetSelectors(resp)
 	names := make([]string, len(selectors))
 	for i, s := range selectors {
-		names[i] = s.Name
+		names[i] = internal.StripEmoji(s.Name)
 	}
 	return names, nil
 }
 
-// completeSelectorNodes returns all node names for a given selector (for shell completion).
+// completeSelectorNodes returns all node names for a given selector (for shell completion)
+// with emoji stripped for cleaner display.
 func completeSelectorNodes(selectorInput string) ([]string, error) {
 	resp, err := fetchProxies()
 	if err != nil {
@@ -297,5 +300,10 @@ func completeSelectorNodes(selectorInput string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return internal.GetSelectorNodes(resp, selector), nil
+	nodes := internal.GetSelectorNodes(resp, selector)
+	cleaned := make([]string, len(nodes))
+	for i, n := range nodes {
+		cleaned[i] = internal.StripEmoji(n)
+	}
+	return cleaned, nil
 }
