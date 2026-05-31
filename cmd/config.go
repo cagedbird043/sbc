@@ -12,7 +12,7 @@ import (
 )
 
 var configCmd = &cobra.Command{
-	Use:   "config {status|show|edit|diff|variant|template|env}",
+	Use:   "config {status|show|diff|variant|template|env}",
 	Short: "配置管理",
 	Long:  "管理 sing-box 配置模板、变体、渲染和部署。",
 }
@@ -35,15 +35,6 @@ var configShowCmd = &cobra.Command{
 	},
 }
 
-// config edit
-var configEditCmd = &cobra.Command{
-	Use:   "edit",
-	Short: "用编辑器打开模板",
-	Run: func(cmd *cobra.Command, args []string) {
-		configEdit()
-	},
-}
-
 // config diff
 var configDiffCmd = &cobra.Command{
 	Use:   "diff",
@@ -60,25 +51,37 @@ var configVariantCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		variant, err := internal.ActiveConfigVariant()
 		if err != nil {
-			variant = "default"
+			variant = "unknown"
 		}
 		stateFile, _ := internal.VariantStateFile()
 		fmt.Printf("variant=%s\nstate_file=%s\n", variant, stateFile)
-		fmt.Println("default=fakeip+prefer_ipv4 · realip-v4-only=real IP + ipv4_only fallback")
+		if avail, err := internal.ListAvailableVariants(); err == nil && len(avail) > 0 {
+			for _, v := range avail {
+				fmt.Printf("  %s    %s\n", v, internal.VariantDescription(v))
+			}
+		}
 	},
 }
 
 var configVariantSetCmd = &cobra.Command{
 	Use:   "set <变体>",
-	Short: "切换配置变体 (default|realip-v4-only)",
+	Short: "切换配置变体",
+	Long:  "可用变体通过 sbc config variant list 查看。变体合法性由文件系统决定。",
 	Args:  cobra.ExactArgs(1),
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		avail, err := internal.ListAvailableVariants()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		return avail, cobra.ShellCompDirectiveNoFileComp
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		variant := args[0]
 		if err := internal.SetConfigVariant(variant); err != nil {
 			fmt.Fprintf(os.Stderr, "❌ %v\n", err)
 			os.Exit(1)
 		}
-		normalized, _ := internal.NormalizeConfigVariant(variant)
+		normalized := internal.NormalizeConfigVariant(variant)
 		fmt.Printf("✅ 已切换配置变体：%s\n", normalized)
 		fmt.Fprintf(os.Stderr, "⚠ 执行 sbc update 后才会部署到 %s。\n", internal.TargetConf())
 	},
@@ -88,8 +91,18 @@ var configVariantListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "列出可用变体",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("default        FakeIP + prefer_ipv4（主流）")
-		fmt.Println("realip-v4-only Real IP + IPv4-only（保守备用）")
+		variants, err := internal.ListAvailableVariants()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "❌ %v\n", err)
+			os.Exit(1)
+		}
+		if len(variants) == 0 {
+			fmt.Println("（暂无可用变体，请先运行 sbc update 下载模板）")
+			return
+		}
+		for _, v := range variants {
+			fmt.Printf("%s    %s\n", v, internal.VariantDescription(v))
+		}
 	},
 }
 
@@ -99,7 +112,7 @@ var configTemplateCmd = &cobra.Command{
 	Short: "模板路径信息",
 	Run: func(cmd *cobra.Command, args []string) {
 		profile := internal.Profile()
-		templatePath, err := internal.TemplatePath()
+		templatePath, err := internal.ActiveVariantTemplatePath()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "❌ %v\n", err)
 			os.Exit(1)
@@ -122,7 +135,6 @@ func init() {
 	rootCmd.AddCommand(configCmd)
 	configCmd.AddCommand(configStatusCmd)
 	configCmd.AddCommand(configShowCmd)
-	configCmd.AddCommand(configEditCmd)
 	configCmd.AddCommand(configDiffCmd)
 	configCmd.AddCommand(configVariantCmd)
 	configVariantCmd.AddCommand(configVariantSetCmd)
@@ -133,7 +145,7 @@ func init() {
 
 func configStatus() {
 	variant, _ := internal.ActiveConfigVariant()
-	templatePath, _ := internal.TemplatePath()
+	templatePath, _ := internal.ActiveVariantTemplatePath()
 	envFile, _ := internal.EnvFilePath()
 	platform := internal.Platform()
 	profile := internal.Profile()
@@ -145,9 +157,16 @@ func configStatus() {
 	fmt.Printf("环境变量:   %s\n", envFile)
 	fmt.Printf("平台:       %s\n", platform)
 	fmt.Printf("配置轨道:   %s\n", profile)
+	fmt.Printf("模板来源:   URL 分发\n")
 }
 
 func configShow() {
+	templatePath, err := internal.ActiveVariantTemplatePath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
+		os.Exit(1)
+	}
+
 	tmpFile, err := os.CreateTemp("", "sbc-show.*.json")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ 创建临时文件失败: %v\n", err)
@@ -166,7 +185,7 @@ func configShow() {
 		os.Exit(1)
 	}
 
-	if err := internal.RenderProfile(tmpFile.Name(), vars); err != nil {
+	if err := internal.RenderProfile(templatePath, tmpFile.Name(), vars); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ 渲染失败: %v\n", err)
 		os.Exit(1)
 	}
@@ -175,48 +194,9 @@ func configShow() {
 	fmt.Print(string(data))
 }
 
-func configEdit() {
-	templatePath, err := internal.TemplatePath()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := internal.RequirePrivateRepo(); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
-		os.Exit(1)
-	}
-
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = os.Getenv("VISUAL")
-	}
-	if editor == "" {
-		for _, e := range []string{"vim", "nano", "vi"} {
-			if _, err := exec.LookPath(e); err == nil {
-				editor = e
-				break
-			}
-		}
-	}
-	if editor == "" {
-		fmt.Fprintf(os.Stderr, "❌ 未找到编辑器。请设置 EDITOR 环境变量。\n")
-		os.Exit(1)
-	}
-
-	fmt.Printf("📝 打开模板: %s\n", templatePath)
-	editCmd := exec.Command(editor, templatePath)
-	editCmd.Stdin = os.Stdin
-	editCmd.Stdout = os.Stdout
-	editCmd.Stderr = os.Stderr
-	if err := editCmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ 编辑器退出异常: %v\n", err)
-		os.Exit(1)
-	}
-}
-
 func configDiff() {
-	if err := internal.RequirePrivateRepo(); err != nil {
+	templatePath, err := internal.ActiveVariantTemplatePath()
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
 		os.Exit(1)
 	}
@@ -241,7 +221,7 @@ func configDiff() {
 		os.Exit(1)
 	}
 
-	if err := internal.RenderProfile(tmpFile.Name(), vars); err != nil {
+	if err := internal.RenderProfile(templatePath, tmpFile.Name(), vars); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ 渲染失败: %v\n", err)
 		os.Exit(1)
 	}
@@ -293,5 +273,3 @@ func printEnvVal(vars map[string]string, key string) {
 		fmt.Printf("%s=未设置\n", key)
 	}
 }
-
-
