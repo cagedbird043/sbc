@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -295,7 +294,4 @@ func printEnvVal(vars map[string]string, key string) {
 	}
 }
 
-// selectorPath returns URL-encoded path for a selector.
-func selectorPath(name string) string {
-	return "/proxies/" + url.PathEscape(name)
-}
+

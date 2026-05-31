@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"text/tabwriter"
 	"time"
@@ -40,6 +41,13 @@ var proxyGroupsCmd = &cobra.Command{
 var proxyNodesCmd = &cobra.Command{
 	Use:   "nodes [组]",
 	Short: "节点代号列表（可选指定组）",
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		names, err := completeSelectorNames()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		return names, cobra.ShellCompDirectiveNoFileComp
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		filter := ""
 		if len(args) > 0 {
@@ -53,6 +61,22 @@ var proxyUseCmd = &cobra.Command{
 	Use:   "use <组> <节点>",
 	Short: "切换节点（支持精确名和子串匹配）",
 	Args:  cobra.ExactArgs(2),
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) == 0 {
+			// Complete group name
+			names, err := completeSelectorNames()
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveError
+			}
+			return names, cobra.ShellCompDirectiveNoFileComp
+		}
+		// len(args) == 1: complete node name within the group
+		nodes, err := completeSelectorNodes(args[0])
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		return nodes, cobra.ShellCompDirectiveNoFileComp
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		proxyUse(args[0], args[1])
 	},
@@ -242,4 +266,36 @@ func proxyUse(selectorInput, nodeInput string) {
 	defer resp2.Body.Close()
 
 	fmt.Printf("✅ [%s]：%s → %s\n", selector, current, target)
+}
+
+// selectorPath returns URL-encoded path for a proxy selector.
+func selectorPath(name string) string {
+	return "/proxies/" + url.PathEscape(name)
+}
+
+// completeSelectorNames returns all Selector names for shell completion.
+func completeSelectorNames() ([]string, error) {
+	resp, err := fetchProxies()
+	if err != nil {
+		return nil, err
+	}
+	selectors := internal.GetSelectors(resp)
+	names := make([]string, len(selectors))
+	for i, s := range selectors {
+		names[i] = s.Name
+	}
+	return names, nil
+}
+
+// completeSelectorNodes returns all node names for a given selector (for shell completion).
+func completeSelectorNodes(selectorInput string) ([]string, error) {
+	resp, err := fetchProxies()
+	if err != nil {
+		return nil, err
+	}
+	selector, err := internal.ResolveSelector(resp, selectorInput)
+	if err != nil {
+		return nil, err
+	}
+	return internal.GetSelectorNodes(resp, selector), nil
 }
