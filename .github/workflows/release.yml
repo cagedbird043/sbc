@@ -14,7 +14,12 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-14]
         goarch: [amd64, arm64]
+        os_name: [linux, darwin]
         exclude:
+          - os: ubuntu-latest
+            os_name: darwin
+          - os: macos-14
+            os_name: linux
           - os: macos-14
             goarch: amd64
     runs-on: ${{ matrix.os }}
@@ -30,12 +35,12 @@ jobs:
         run: |
           GOARCH=${{ matrix.goarch }} go build \
             -ldflags "-s -w -X github.com/cagedbird043/sbc/cmd.Version=${GITHUB_REF_NAME#v}" \
-            -o sbc-${{ runner.os }}-${{ matrix.goarch }} .
+            -o sbc-${{ matrix.os_name }}-${{ matrix.goarch }} .
 
       - uses: actions/upload-artifact@v4
         with:
-          name: sbc-${{ runner.os }}-${{ matrix.goarch }}
-          path: sbc-${{ runner.os }}-${{ matrix.goarch }}
+          name: sbc-${{ matrix.os_name }}-${{ matrix.goarch }}
+          path: sbc-${{ matrix.os_name }}-${{ matrix.goarch }}
 
   release:
     needs: build
