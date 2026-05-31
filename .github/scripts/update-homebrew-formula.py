@@ -24,9 +24,9 @@ content = re.sub(release_version_pattern, rf'\g<1>v{version}\g<2>', content)
 
 # Update sha256 lines (they follow url lines)
 platforms = [
-    ('sbc-Linux-amd64', sha_linux_amd64),
-    ('sbc-Linux-arm64', sha_linux_arm64),
-    ('sbc-Darwin-arm64', sha_darwin_arm),
+    ('sbc-linux-amd64', sha_linux_amd64),
+    ('sbc-linux-arm64', sha_linux_arm64),
+    ('sbc-darwin-arm64', sha_darwin_arm),
 ]
 
 for url_suffix, new_sha in platforms:
