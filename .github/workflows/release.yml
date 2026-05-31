@@ -56,8 +56,8 @@ jobs:
 
       - name: Generate zsh completion
         run: |
-          chmod +x sbc-Linux-amd64
-          ./sbc-Linux-amd64 completion zsh > _sbc
+          chmod +x sbc-linux-amd64
+          ./sbc-linux-amd64 completion zsh > _sbc
 
       - uses: softprops/action-gh-release@v2
         with:
@@ -84,14 +84,14 @@ jobs:
       - name: Compute SHA256
         id: shas
         run: |
-          echo "linux_amd64_sha=$(sha256sum sbc-Linux-amd64 | cut -d' ' -f1)" >> "$GITHUB_ENV"
-          echo "linux_arm64_sha=$(sha256sum sbc-Linux-arm64 | cut -d' ' -f1)" >> "$GITHUB_ENV"
-          echo "darwin_arm_sha=$(sha256sum sbc-Darwin-arm64 | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "linux_amd64_sha=$(sha256sum sbc-linux-amd64 | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "linux_arm64_sha=$(sha256sum sbc-linux-arm64 | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "darwin_arm_sha=$(sha256sum sbc-darwin-arm64 | cut -d' ' -f1)" >> "$GITHUB_ENV"
 
       - name: Generate zsh completion and compute SHA
         run: |
-          chmod +x sbc-Linux-amd64
-          ./sbc-Linux-amd64 completion zsh > _sbc
+          chmod +x sbc-linux-amd64
+          ./sbc-linux-amd64 completion zsh > _sbc
           echo "completion_sha=$(sha256sum _sbc | cut -d' ' -f1)" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@v4
