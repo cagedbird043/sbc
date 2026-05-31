@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-14]
+        goarch: [amd64, arm64]
+        exclude:
+          - os: macos-14
+            goarch: amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "~1.26"
+          check-latest: true
+
+      - name: Build
+        run: |
+          GOARCH=${{ matrix.goarch }} go build \
+            -ldflags "-s -w -X github.com/cagedbird043/sbc/cmd.Version=${GITHUB_REF_NAME#v}" \
+            -o sbc-${{ runner.os }}-${{ matrix.goarch }} .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbc-${{ runner.os }}-${{ matrix.goarch }}
+          path: sbc-${{ runner.os }}-${{ matrix.goarch }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sbc-*
+          merge-multiple: true
+
+      - name: Checksums
+        run: sha256sum sbc-* > checksums.txt
+
+      - name: Generate zsh completion
+        run: |
+          chmod +x sbc-Linux-amd64
+          ./sbc-Linux-amd64 completion zsh > _sbc
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sbc-*
+            checksums.txt
+            _sbc
+          generate_release_notes: true
+
+  update-homebrew:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: sbc-repo
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sbc-*
+          merge-multiple: true
+
+      - name: Compute SHA256
+        id: shas
+        run: |
+          echo "linux_amd64_sha=$(sha256sum sbc-Linux-amd64 | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "linux_arm64_sha=$(sha256sum sbc-Linux-arm64 | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "darwin_arm_sha=$(sha256sum sbc-Darwin-arm64 | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
+      - name: Generate zsh completion and compute SHA
+        run: |
+          chmod +x sbc-Linux-amd64
+          ./sbc-Linux-amd64 completion zsh > _sbc
+          echo "completion_sha=$(sha256sum _sbc | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: cagedbird043/homebrew-tap
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update formula
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 "$GITHUB_WORKSPACE/sbc-repo/.github/scripts/update-homebrew-formula.py" \
+            homebrew-tap/Formula/sbc.rb "$VERSION" \
+            "${{ env.linux_amd64_sha }}" \
+            "${{ env.linux_arm64_sha }}" \
+            "${{ env.darwin_arm_sha }}" \
+            "${{ env.completion_sha }}"
+          cd homebrew-tap
+          git add Formula/sbc.rb
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "sbc: bump to v${VERSION}"
+          git push
