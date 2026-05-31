@@ -7,37 +7,6 @@ import (
 	"regexp"
 )
 
-// TemplatePath returns the full path to the config template for the current profile.
-func TemplatePath() (string, error) {
-	templateRoot, err := TemplateRoot()
-	if err != nil {
-		return "", err
-	}
-	profile := Profile()
-	return templateRoot + "/profiles/" + profile + "/config.template.json", nil
-}
-
-// RequirePrivateRepo checks that the template root is a valid git repo with a template file.
-func RequirePrivateRepo() error {
-	templateRoot, err := TemplateRoot()
-	if err != nil {
-		return err
-	}
-	gitDir := templateRoot + "/.git"
-	if info, err := os.Stat(gitDir); err != nil || !info.IsDir() {
-		return fmt.Errorf("未发现私有模板仓：%s\n请先克隆 git@github.com:cagedbird043/sing-box-private-prod.git，或设置 SBC_TEMPLATE_ROOT。", templateRoot)
-	}
-
-	templatePath, err := TemplatePath()
-	if err != nil {
-		return err
-	}
-	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
-		return fmt.Errorf("未发现模板文件：%s", templatePath)
-	}
-	return nil
-}
-
 // expandEnvsubst replaces $VAR and ${VAR} with values from vars.
 // If a variable is not found, it's replaced with empty string (envsubst behavior).
 func expandEnvsubst(input string, vars map[string]string) string {
@@ -59,25 +28,10 @@ func expandEnvsubst(input string, vars map[string]string) string {
 	return result
 }
 
-// RenderProfile renders the template with envsubst semantics and writes to outputPath.
-func RenderProfile(outputPath string, vars map[string]string) error {
-	templatePath, err := TemplatePath()
-	if err != nil {
-		return err
-	}
-
-	// Check for variant-specific template (realip-v4-only)
-	variant, _ := ActiveConfigVariant()
-	switch variant {
-	case DefaultConfigVariantRealIP:
-		templateRoot, _ := TemplateRoot()
-		profile := Profile()
-		realipPath := templateRoot + "/profiles/" + profile + "-realip/config.template.json"
-		if _, err := os.Stat(realipPath); err == nil {
-			templatePath = realipPath
-		}
-	}
-
+// RenderProfile reads the template at templatePath, substitutes variables
+// with envsubst semantics, and writes the result to outputPath.
+// The caller is responsible for choosing the correct template file (variant).
+func RenderProfile(templatePath, outputPath string, vars map[string]string) error {
 	tplContent, err := os.ReadFile(templatePath)
 	if err != nil {
 		return fmt.Errorf("无法读取模板文件 %s: %w", templatePath, err)
@@ -89,22 +43,6 @@ func RenderProfile(outputPath string, vars map[string]string) error {
 		return fmt.Errorf("写入渲染结果失败: %w", err)
 	}
 
-	return nil
-}
-
-// SyncPrivateRepo runs git pull --ff-only on the template root.
-func SyncPrivateRepo() error {
-	if err := RequirePrivateRepo(); err != nil {
-		return err
-	}
-	templateRoot, _ := TemplateRoot()
-
-	cmd := exec.Command("git", "-C", templateRoot, "pull", "--ff-only")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git pull --ff-only 失败: %w", err)
-	}
 	return nil
 }
 
