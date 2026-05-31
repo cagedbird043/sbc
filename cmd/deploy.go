@@ -162,7 +162,11 @@ func cmdUpdate() {
 	// 10. Restart service
 	serviceRestart()
 
-	fmt.Printf("✨ 同步完成！轨道：%s，模板来源：URL 分发\n", profile)
+	variant, _ := internal.ActiveConfigVariant()
+	if variant == "" {
+		variant = "未设置"
+	}
+	fmt.Printf("✨ 同步完成！轨道：%s，变体：%s，模板来源：URL 分发\n", profile, variant)
 }
 
 func cmdValidate() {
