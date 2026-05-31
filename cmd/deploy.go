@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/cagedbird043/sbc/internal"
@@ -13,8 +15,8 @@ import (
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "同步 + 渲染 + 部署 + 重启",
-	Long:  "从私有 production truth 同步模板，渲染配置，部署到系统，重启服务。",
+	Short: "下载 + 渲染 + 部署 + 重启",
+	Long:  "从 HTTPS URL 下载模板，渲染配置，部署到系统，重启服务。",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmdUpdate()
 	},
@@ -22,7 +24,8 @@ var updateCmd = &cobra.Command{
 
 var validateCmd = &cobra.Command{
 	Use:   "validate",
-	Short: "检查模板渲染语法（不部署）",
+	Short: "下载 + 渲染 + 语法检查（不部署）",
+	Long:  "从 HTTPS URL 下载模板、渲染、语法检查，但不部署。",
 	Run: func(cmd *cobra.Command, args []string) {
 		cmdValidate()
 	},
@@ -43,15 +46,60 @@ func init() {
 }
 
 func cmdUpdate() {
-	fmt.Println("📡 正在从私有 production truth 下发指令...")
+	fmt.Println("📡 正在从 HTTPS 模板分发拉取配置...")
 
-	// Load env to get any SBC_TEMPLATE_ROOT override
-	vars, err := internal.LoadEnv()
+	// 1. Read template URLs from .env
+	urls, err := internal.ReadEnvURLs()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
 		os.Exit(1)
 	}
 
+	// 2. Download all configs
+	downloaded, failed, err := internal.DownloadConfigs(urls)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ 下载失败: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 3. Verify downloads (checks active variant availability, etc.)
+	if err := internal.VerifyDownloads(urls, downloaded, failed); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
+		os.Exit(1)
+	}
+
+	// 4. Copy downloaded files to ConfigDir
+	configDir := internal.ConfigDir()
+	if configDir == "" {
+		fmt.Fprintf(os.Stderr, "❌ 无法确定配置目录\n")
+		os.Exit(1)
+	}
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ 创建配置目录失败: %v\n", err)
+		os.Exit(1)
+	}
+	for filename, srcPath := range downloaded {
+		dstPath := filepath.Join(configDir, filename)
+		if err := copyFile(srcPath, dstPath); err != nil {
+			fmt.Fprintf(os.Stderr, "❌ 复制文件失败 (%s): %v\n", filename, err)
+			os.Exit(1)
+		}
+	}
+	fmt.Printf("✅ 已下载 %d 个模板到 %s\n", len(downloaded), configDir)
+
+	// 5. Find active variant template
+	templatePath, err := internal.ActiveVariantTemplatePath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
+		os.Exit(1)
+	}
+
+	// 6. Load .env variables
+	vars, err := internal.LoadEnv()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
+		os.Exit(1)
+	}
 	if missing := internal.RequireEnvVars(vars); len(missing) > 0 {
 		fmt.Fprintf(os.Stderr, "❌ 缺少必需环境变量: %s\n", strings.Join(missing, ", "))
 		os.Exit(1)
@@ -64,7 +112,7 @@ func cmdUpdate() {
 		exec.Command("sudo", "-v").Run()
 	}
 
-	// Create temp workspace
+	// Create temp workspace for rendering
 	tmpDir, err := os.MkdirTemp("", "sbc-runtime.*")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ 创建临时目录失败: %v\n", err)
@@ -72,31 +120,23 @@ func cmdUpdate() {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	renderedConf := tmpDir + "/config.json.tmp"
+	renderedConf := filepath.Join(tmpDir, "config.json.tmp")
 
-	// Sync private repo
-	fmt.Println("📦 正在同步私有 production truth...")
-	if err := internal.SyncPrivateRepo(); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
-		os.Exit(1)
-	}
-
-	// Render
-	templatePath, _ := internal.TemplatePath()
-	if err := internal.RenderProfile(renderedConf, vars); err != nil {
+	// 7. Render
+	if err := internal.RenderProfile(templatePath, renderedConf, vars); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ 渲染失败 (%s): %v\n", templatePath, err)
 		os.Exit(1)
 	}
 
-	// Basic validation
+	// Basic validation — must contain "inbounds"
 	data, err := os.ReadFile(renderedConf)
 	if err != nil || !strings.Contains(string(data), "inbounds") {
 		fmt.Fprintf(os.Stderr, "❌ 模板渲染结果校验失败。\n")
 		os.Exit(1)
 	}
-	fmt.Println("✅ 私有模板已同步。准备执行预检与部署...")
+	fmt.Println("✅ 模板已渲染。准备执行预检与部署...")
 
-	// Syntax check
+	// 8. sing-box syntax check
 	singBoxBin, err := internal.SingBoxBin()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
@@ -113,20 +153,76 @@ func cmdUpdate() {
 
 	fmt.Println("✅ 语法预检通过。执行原子化部署...")
 
-	// Install config
+	// 9. Deploy
 	if err := internal.InstallConfig(renderedConf); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ 部署配置失败: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Restart service
+	// 10. Restart service
 	serviceRestart()
 
-	templateRoot, _ := internal.TemplateRoot()
-	fmt.Printf("✨ 同步完成！轨道：%s @ %s\n", profile, templateRoot)
+	fmt.Printf("✨ 同步完成！轨道：%s，模板来源：URL 分发\n", profile)
 }
 
 func cmdValidate() {
+	// 1. Read template URLs
+	urls, err := internal.ReadEnvURLs()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
+		os.Exit(1)
+	}
+
+	// 2. Download
+	downloaded, failed, err := internal.DownloadConfigs(urls)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ 下载失败: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 3. Verify
+	if err := internal.VerifyDownloads(urls, downloaded, failed); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
+		os.Exit(1)
+	}
+
+	// 4. Copy to ConfigDir
+	configDir := internal.ConfigDir()
+	if configDir == "" {
+		fmt.Fprintf(os.Stderr, "❌ 无法确定配置目录\n")
+		os.Exit(1)
+	}
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ 创建配置目录失败: %v\n", err)
+		os.Exit(1)
+	}
+	for filename, srcPath := range downloaded {
+		dstPath := filepath.Join(configDir, filename)
+		if err := copyFile(srcPath, dstPath); err != nil {
+			fmt.Fprintf(os.Stderr, "❌ 复制文件失败 (%s): %v\n", filename, err)
+			os.Exit(1)
+		}
+	}
+
+	// 5. Find active variant template
+	templatePath, err := internal.ActiveVariantTemplatePath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
+		os.Exit(1)
+	}
+
+	// 6. Load env
+	vars, err := internal.LoadEnv()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
+		os.Exit(1)
+	}
+	if missing := internal.RequireEnvVars(vars); len(missing) > 0 {
+		fmt.Fprintf(os.Stderr, "❌ 缺少必需环境变量: %s\n", strings.Join(missing, ", "))
+		os.Exit(1)
+	}
+
+	// Create temp file for rendering
 	tmpFile, err := os.CreateTemp("", "sbc-validate.*.json")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ 创建临时文件失败: %v\n", err)
@@ -134,22 +230,13 @@ func cmdValidate() {
 	}
 	defer os.Remove(tmpFile.Name())
 
-	vars, err := internal.LoadEnv()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
+	// 7. Render
+	if err := internal.RenderProfile(templatePath, tmpFile.Name(), vars); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ 渲染失败 (%s): %v\n", templatePath, err)
 		os.Exit(1)
 	}
 
-	if missing := internal.RequireEnvVars(vars); len(missing) > 0 {
-		fmt.Fprintf(os.Stderr, "❌ 缺少必需环境变量: %s\n", strings.Join(missing, ", "))
-		os.Exit(1)
-	}
-
-	if err := internal.RenderProfile(tmpFile.Name(), vars); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ 渲染失败: %v\n", err)
-		os.Exit(1)
-	}
-
+	// 8. Syntax check (no deploy)
 	singBoxBin, err := internal.SingBoxBin()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
@@ -160,13 +247,11 @@ func cmdValidate() {
 	checkCmd.Stdout = os.Stdout
 	checkCmd.Stderr = os.Stderr
 	if err := checkCmd.Run(); err != nil {
-		templatePath, _ := internal.TemplatePath()
-		fmt.Fprintf(os.Stderr, "❌ 私有模板渲染语法失败：%s\n", templatePath)
+		fmt.Fprintf(os.Stderr, "❌ 模板渲染语法失败：%s\n", templatePath)
 		os.Exit(1)
 	}
 
-	templatePath, _ := internal.TemplatePath()
-	fmt.Printf("✅ 私有模板渲染通过：%s\n", templatePath)
+	fmt.Printf("✅ 模板渲染语法通过：%s\n", templatePath)
 }
 
 func cmdCheck() {
@@ -186,4 +271,25 @@ func cmdCheck() {
 	}
 
 	fmt.Println("✅ 语法检查通过 (Current Config)")
+}
+
+// copyFile copies a file from src to dst.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		os.Remove(dst)
+		return err
+	}
+	return nil
 }
