@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -21,6 +22,16 @@ type ClashProxiesResponse struct {
 type ProxySelector struct {
 	Name    string
 	Current string
+}
+
+// ParseProxiesResponseFromJSON parses a JSON string into a ClashProxiesResponse.
+// This is used by tests.
+func ParseProxiesResponseFromJSON(jsonStr string) (*ClashProxiesResponse, error) {
+	var resp ClashProxiesResponse
+	if err := json.Unmarshal([]byte(jsonStr), &resp); err != nil {
+		return nil, fmt.Errorf("解析 Clash API 响应失败: %w", err)
+	}
+	return &resp, nil
 }
 
 // GetSelectors extracts all ProxySelector entries from the response.

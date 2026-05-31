@@ -86,7 +86,11 @@ func TemplateRoot() (string, error) {
 }
 
 // TargetConf returns the deployed config.json path for the current platform.
+// Can be overridden by the TARGET_CONF environment variable.
 func TargetConf() string {
+	if tc := os.Getenv("TARGET_CONF"); tc != "" {
+		return tc
+	}
 	profile := Profile()
 	switch profile {
 	case "macos":
