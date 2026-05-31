@@ -62,7 +62,7 @@ func TestServiceSubCommandsRegistered(t *testing.T) {
 }
 
 func TestConfigSubCommandsRegistered(t *testing.T) {
-	expected := []string{"status", "show", "edit", "diff", "variant", "template", "env"}
+	expected := []string{"status", "show", "diff", "variant", "template", "env"}
 
 	var configSub *cobra.Command
 	for _, c := range rootCmd.Commands() {

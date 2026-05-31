@@ -10,60 +10,32 @@ func TestNormalizeConfigVariant(t *testing.T) {
 	tests := []struct {
 		input    string
 		expected string
-		wantErr  bool
 	}{
-		{"default", "default", false},
-		{"main", "default", false},
-		{"fakeip", "default", false},
-		{"fakeip-prefer-ipv4", "default", false},
-		{"fakeip_prefer_ipv4", "default", false},
-		{"realip", "realip-v4-only", false},
-		{"realip-v4", "realip-v4-only", false},
-		{"realip-v4-only", "realip-v4-only", false},
-		{"realip_v4_only", "realip-v4-only", false},
-		{"v4-only", "realip-v4-only", false},
-		{"ipv4-only", "realip-v4-only", false},
-		// Case insensitivity
-		{"Default", "default", false},
-		{"REALIP", "realip-v4-only", false},
-		{"FakeIP-Prefer-IPv4", "default", false},
-		// Invalid
-		{"unknown", "", true},
-		{"", "", true},
-		// Whitespace
-		{"  default  ", "default", false},
+		{"default", "default"},
+		{"DEFAULT", "default"},
+		{"REALIP", "realip"},
+		{"realip-v4-only", "realip-v4-only"},
+		{"  fakeip-prefer-ipv4  ", "fakeip-prefer-ipv4"},
+		{"unknown", "unknown"},
 	}
 	for _, tc := range tests {
-		result, err := NormalizeConfigVariant(tc.input)
-		if tc.wantErr {
-			if err == nil {
-				t.Errorf("NormalizeConfigVariant(%q) expected error", tc.input)
-			}
-			continue
-		}
-		if err != nil {
-			t.Errorf("NormalizeConfigVariant(%q) unexpected error: %v", tc.input, err)
-			continue
-		}
+		result := NormalizeConfigVariant(tc.input)
 		if result != tc.expected {
 			t.Errorf("NormalizeConfigVariant(%q) = %q, want %q", tc.input, result, tc.expected)
 		}
 	}
 }
 
-func TestActiveConfigVariantDefault(t *testing.T) {
+func TestActiveConfigVariantUnset(t *testing.T) {
 	dir := t.TempDir()
 	origHome := os.Getenv("HOME")
 	os.Setenv("HOME", dir)
 	defer os.Setenv("HOME", origHome)
 	os.Unsetenv("SBC_CONFIG_VARIANT")
 
-	variant, err := ActiveConfigVariant()
-	if err != nil {
-		t.Fatalf("ActiveConfigVariant failed: %v", err)
-	}
-	if variant != "default" {
-		t.Errorf("expected 'default', got %q", variant)
+	_, err := ActiveConfigVariant()
+	if err == nil {
+		t.Fatal("expected error when no variant is set, got nil")
 	}
 }
 
@@ -88,8 +60,8 @@ func TestActiveConfigVariantFromEnvNormalized(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ActiveConfigVariant failed: %v", err)
 	}
-	if variant != "realip-v4-only" {
-		t.Errorf("expected 'realip-v4-only', got %q", variant)
+	if variant != "realip" {
+		t.Errorf("expected 'realip', got %q", variant)
 	}
 }
 
@@ -156,10 +128,23 @@ func TestSetConfigVariant(t *testing.T) {
 	}
 }
 
-func TestSetConfigVariantInvalid(t *testing.T) {
-	err := SetConfigVariant("unknown")
-	if err == nil {
-		t.Fatal("expected error for invalid variant, got nil")
+func TestSetConfigVariantAnyName(t *testing.T) {
+	dir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", dir)
+	defer os.Setenv("HOME", origHome)
+
+	if err := SetConfigVariant("custom-variant"); err != nil {
+		t.Fatalf("SetConfigVariant('custom-variant') failed: %v", err)
+	}
+
+	stateFile, _ := VariantStateFile()
+	data, err := os.ReadFile(stateFile)
+	if err != nil {
+		t.Fatalf("cannot read state file: %v", err)
+	}
+	if string(data) != "custom-variant\n" {
+		t.Errorf("state file content = %q, want 'custom-variant\\n'", string(data))
 	}
 }
 
@@ -178,8 +163,8 @@ func TestSetConfigVariantNormalized(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot read state file: %v", err)
 	}
-	if string(data) != "realip-v4-only\n" {
-		t.Errorf("state file content = %q, want 'realip-v4-only\\n'", string(data))
+	if string(data) != "realip\n" {
+		t.Errorf("state file content = %q, want 'realip\\n'", string(data))
 	}
 }
 

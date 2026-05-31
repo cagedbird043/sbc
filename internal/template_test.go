@@ -157,7 +157,8 @@ func TestRenderProfile(t *testing.T) {
 	}
 
 	outputPath := filepath.Join(dir, "rendered.json")
-	if err := RenderProfile(outputPath, vars); err != nil {
+	// Template is at templatePath, output to outputPath
+	if err := RenderProfile(templatePath, outputPath, vars); err != nil {
 		t.Fatalf("RenderProfile failed: %v", err)
 	}
 
@@ -187,14 +188,9 @@ func TestRenderProfile(t *testing.T) {
 
 func TestRenderProfileMissingTemplate(t *testing.T) {
 	dir := t.TempDir()
-	os.Setenv("SBC_TEMPLATE_ROOT", dir)
-	defer os.Unsetenv("SBC_TEMPLATE_ROOT")
-
-	os.Setenv("SBC_PROFILE", "linux")
-	defer os.Unsetenv("SBC_PROFILE")
-
 	outputPath := filepath.Join(dir, "rendered.json")
-	err := RenderProfile(outputPath, map[string]string{"KEY": "VALUE"})
+	// Use a non-existent template path
+	err := RenderProfile("/nonexistent/template.json", outputPath, map[string]string{"KEY": "VALUE"})
 	if err == nil {
 		t.Fatal("expected error for missing template file, got nil")
 	}

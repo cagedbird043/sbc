@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-// NormalizeConfigVariant lowercases and trims the input.
-// Validation is deferred — the filesystem (ListAvailableVariants) is the
-// source of truth for which variants actually exist.
+// NormalizeConfigVariant normalizes user input by lowercasing and trimming.
+// No hardcoded names — validation is deferred to ListAvailableVariants
+// which scans the actual files on disk.
 func NormalizeConfigVariant(input string) string {
 	return strings.ToLower(strings.TrimSpace(input))
 }
@@ -23,15 +23,14 @@ func ActiveConfigVariant() (string, error) {
 	// 2. State file
 	stateFile, err := VariantStateFile()
 	if err != nil {
-		return DefaultConfigVariant, nil
+		return "", fmt.Errorf("无法确定配置目录: %w", err)
 	}
 	data, err := os.ReadFile(stateFile)
-	if err == nil {
-		return NormalizeConfigVariant(strings.TrimSpace(string(data))), nil
+	if err != nil {
+		return "", fmt.Errorf("未设置配置变体。请先执行 'sbc config variant set <变体>'")
 	}
 
-	// 3. Default
-	return DefaultConfigVariant, nil
+	return NormalizeConfigVariant(strings.TrimSpace(string(data))), nil
 }
 
 // SetConfigVariant writes the normalized variant name to the state file.
