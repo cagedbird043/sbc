@@ -74,9 +74,21 @@ func Profile() string {
 // TemplateRoot returns the template root directory.
 // Default: derived from executable path (../../) or $SBC_TEMPLATE_ROOT.
 func TemplateRoot() (string, error) {
+	// 1. Environment variable override
 	if tr := os.Getenv("SBC_TEMPLATE_ROOT"); tr != "" {
 		return tr, nil
 	}
+
+	// 2. Fallback to .env file (for brew-installed binary)
+	if envFile, err := EnvFilePath(); err == nil {
+		if vars, err := ReadEnvFile(envFile); err == nil {
+			if tr := vars["SBC_TEMPLATE_ROOT"]; tr != "" {
+				return tr, nil
+			}
+		}
+	}
+
+	// 3. Derive from binary path (works when sbc lives alongside private-prod)
 	exe, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("无法获取可执行文件路径: %w", err)
