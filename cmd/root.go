@@ -40,14 +40,17 @@ func init() {
 // cmdOverview prints a status summary (like the shell version's empty-arg behavior).
 func cmdOverview() {
 	platform := internal.Platform()
-	profile := internal.Profile()
 	variant := activeVariant()
 	variantDesc := variantDescription(variant)
 
-	templateRoot, _ := internal.TemplateRoot()
 	envFile, _ := internal.EnvFilePath()
 	targetConf := internal.TargetConf()
-	templatePath := templateRoot + "/profiles/" + profile + "/config.template.json"
+
+	// Template path: show local cache if available, else "URL 分发"
+	templateInfo := "URL 分发"
+	if tp, err := internal.ActiveVariantTemplatePath(); err == nil {
+		templateInfo = tp
+	}
 
 	// Service status
 	serviceStatus := checkServiceStatus(platform)
@@ -60,7 +63,7 @@ func cmdOverview() {
 	fmt.Printf("  API:      %s\n", apiStatus)
 	fmt.Printf("  变体:     %s（%s）\n", variant, variantDesc)
 	fmt.Printf("  平台:     %s\n", platform)
-	fmt.Printf("  模板:     %s\n", templatePath)
+	fmt.Printf("  模板:     %s\n", templateInfo)
 	fmt.Printf("  目标:     %s\n", targetConf)
 	fmt.Printf("  环境:     %s\n", envFile)
 }

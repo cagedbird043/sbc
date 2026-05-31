@@ -6,23 +6,18 @@ import (
 	"strings"
 )
 
-// NormalizeConfigVariant normalizes user input to canonical variant names.
-func NormalizeConfigVariant(input string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(input)) {
-	case "default", "main", "fakeip", "fakeip-prefer-ipv4", "fakeip_prefer_ipv4":
-		return DefaultConfigVariant, nil
-	case "realip", "realip-v4", "realip-v4-only", "realip_v4_only", "v4-only", "ipv4-only":
-		return DefaultConfigVariantRealIP, nil
-	default:
-		return "", fmt.Errorf("未知配置变体: %s （可选: default, realip-v4-only）", input)
-	}
+// NormalizeConfigVariant lowercases and trims the input.
+// Validation is deferred — the filesystem (ListAvailableVariants) is the
+// source of truth for which variants actually exist.
+func NormalizeConfigVariant(input string) string {
+	return strings.ToLower(strings.TrimSpace(input))
 }
 
 // ActiveConfigVariant reads the current variant from state file, env, or default.
 func ActiveConfigVariant() (string, error) {
 	// 1. Environment variable override
 	if envVar := os.Getenv("SBC_CONFIG_VARIANT"); envVar != "" {
-		return NormalizeConfigVariant(envVar)
+		return NormalizeConfigVariant(envVar), nil
 	}
 
 	// 2. State file
@@ -32,19 +27,16 @@ func ActiveConfigVariant() (string, error) {
 	}
 	data, err := os.ReadFile(stateFile)
 	if err == nil {
-		return NormalizeConfigVariant(strings.TrimSpace(string(data)))
+		return NormalizeConfigVariant(strings.TrimSpace(string(data))), nil
 	}
 
 	// 3. Default
 	return DefaultConfigVariant, nil
 }
 
-// SetConfigVariant writes the variant to the state file.
+// SetConfigVariant writes the normalized variant name to the state file.
 func SetConfigVariant(variant string) error {
-	normalized, err := NormalizeConfigVariant(variant)
-	if err != nil {
-		return err
-	}
+	normalized := NormalizeConfigVariant(variant)
 
 	stateFile, err := VariantStateFile()
 	if err != nil {
@@ -63,7 +55,7 @@ func SetConfigVariant(variant string) error {
 // VariantDescription returns a human-readable description for a variant.
 func VariantDescription(variant string) string {
 	switch variant {
-	case DefaultConfigVariant:
+	case DefaultConfigVariant, "fakeip-prefer-ipv4":
 		return "fakeip+prefer_ipv4"
 	case DefaultConfigVariantRealIP:
 		return "real IP + ipv4_only fallback"
