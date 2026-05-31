@@ -1,11 +1,10 @@
 package internal
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
-	"text/template"
+	"regexp"
 )
 
 // TemplatePath returns the full path to the config template for the current profile.
@@ -39,14 +38,35 @@ func RequirePrivateRepo() error {
 	return nil
 }
 
-// RenderProfile renders the template with the given env vars and writes to outputPath.
+// expandEnvsubst replaces $VAR and ${VAR} with values from vars.
+// If a variable is not found, it's replaced with empty string (envsubst behavior).
+func expandEnvsubst(input string, vars map[string]string) string {
+	// Match ${VAR} first, then $VAR (alphanumeric + underscore only)
+	result := regexp.MustCompile(`\$\{([^}]+)\}`).ReplaceAllStringFunc(input, func(match string) string {
+		key := match[2 : len(match)-1]
+		if val, ok := vars[key]; ok {
+			return val
+		}
+		return ""
+	})
+	result = regexp.MustCompile(`\$([A-Za-z_][A-Za-z0-9_]*)`).ReplaceAllStringFunc(result, func(match string) string {
+		key := match[1:]
+		if val, ok := vars[key]; ok {
+			return val
+		}
+		return ""
+	})
+	return result
+}
+
+// RenderProfile renders the template with envsubst semantics and writes to outputPath.
 func RenderProfile(outputPath string, vars map[string]string) error {
 	templatePath, err := TemplatePath()
 	if err != nil {
 		return err
 	}
 
-	// Check for variant-specific template
+	// Check for variant-specific template (realip-v4-only)
 	variant, _ := ActiveConfigVariant()
 	switch variant {
 	case DefaultConfigVariantRealIP:
@@ -63,17 +83,9 @@ func RenderProfile(outputPath string, vars map[string]string) error {
 		return fmt.Errorf("无法读取模板文件 %s: %w", templatePath, err)
 	}
 
-	tmpl, err := template.New("config").Parse(string(tplContent))
-	if err != nil {
-		return fmt.Errorf("模板解析失败: %w", err)
-	}
+	rendered := expandEnvsubst(string(tplContent), vars)
 
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, vars); err != nil {
-		return fmt.Errorf("模板渲染失败: %w", err)
-	}
-
-	if err := os.WriteFile(outputPath, buf.Bytes(), 0600); err != nil {
+	if err := os.WriteFile(outputPath, []byte(rendered), 0600); err != nil {
 		return fmt.Errorf("写入渲染结果失败: %w", err)
 	}
 
