@@ -1,9 +1,8 @@
 package cmd
 
 import (
-	"bytes"
 	"fmt"
-	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -296,52 +295,7 @@ func printEnvVal(vars map[string]string, key string) {
 	}
 }
 
-// requireControllerEnv loads env and ensures CLASH_API_SECRET is present.
-func requireControllerEnv() (map[string]string, error) {
-	vars, err := internal.LoadEnv()
-	if err != nil {
-		return nil, err
-	}
-	if vars["CLASH_API_SECRET"] == "" {
-		return nil, fmt.Errorf("缺少 CLASH_API_SECRET，无法访问 9090 控制接口。")
-	}
-	return vars, nil
-}
-
 // selectorPath returns URL-encoded path for a selector.
 func selectorPath(name string) string {
-	// URL path encoding for proxy names
-	encoded := strings.ReplaceAll(name, " ", "%20")
-	encoded = strings.ReplaceAll(encoded, "#", "%23")
-	encoded = strings.ReplaceAll(encoded, "&", "%26")
-	return "/proxies/" + encoded
+	return "/proxies/" + url.PathEscape(name)
 }
-
-// renderProfileAndSave renders template and saves to a temp file.
-// Returns the file handle; caller must close and remove.
-func renderProfileAndSave() (*os.File, error) {
-	vars, err := internal.LoadEnv()
-	if err != nil {
-		return nil, err
-	}
-
-	if missing := internal.RequireEnvVars(vars); len(missing) > 0 {
-		return nil, fmt.Errorf("缺少必需环境变量: %s", strings.Join(missing, ", "))
-	}
-
-	tmpFile, err := os.CreateTemp("", "sbc-render.*.json")
-	if err != nil {
-		return nil, fmt.Errorf("创建临时文件失败: %w", err)
-	}
-
-	if err := internal.RenderProfile(tmpFile.Name(), vars); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpFile.Name())
-		return nil, fmt.Errorf("渲染失败: %w", err)
-	}
-
-	return tmpFile, nil
-}
-
-// Ensure bytes import is used (for consistency)
-var _ io.Reader = bytes.NewReader(nil)
