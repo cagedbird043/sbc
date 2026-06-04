@@ -42,6 +42,10 @@ func ReadEnvFile(path string) (map[string]string, error) {
 		val := strings.TrimSpace(line[idx+1:])
 		// Strip surrounding double quotes if present
 		val = strings.Trim(val, "\"")
+		// Strip surrounding single quotes if present (matching pair)
+		if strings.HasPrefix(val, "'") && strings.HasSuffix(val, "'") && len(val) >= 2 {
+			val = val[1 : len(val)-1]
+		}
 		vars[key] = val
 	}
 	if err := scanner.Err(); err != nil {

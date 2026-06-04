@@ -73,6 +73,42 @@ NUMBER=123
 	}
 }
 
+func TestReadEnvFileSingleQuotedValues(t *testing.T) {
+	dir := t.TempDir()
+	envFile := filepath.Join(dir, ".env")
+
+	content := `SINGLE_QUOTED='https://example.com/path?query=value'
+EMPTY_SINGLE=''
+UNQUOTED=bare-value
+MISMATCHED='val'ue'
+DOUBLE_INSIDE='he said "hello"'
+`
+	if err := os.WriteFile(envFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	vars, err := ReadEnvFile(envFile)
+	if err != nil {
+		t.Fatalf("ReadEnvFile failed: %v", err)
+	}
+
+	tests := []struct {
+		key      string
+		expected string
+	}{
+		{"SINGLE_QUOTED", "https://example.com/path?query=value"},
+		{"EMPTY_SINGLE", ""},
+		{"UNQUOTED", "bare-value"},
+		{"MISMATCHED", "val'ue"},    // 首尾配对就剥，内部引号不管
+		{"DOUBLE_INSIDE", "he said \"hello\""},
+	}
+	for _, tc := range tests {
+		if got := vars[tc.key]; got != tc.expected {
+			t.Errorf("vars[%q] = %q, want %q", tc.key, got, tc.expected)
+		}
+	}
+}
+
 func TestReadEnvFileCommentsAndBlankLines(t *testing.T) {
 	dir := t.TempDir()
 	envFile := filepath.Join(dir, ".env")
