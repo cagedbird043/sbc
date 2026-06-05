@@ -72,12 +72,11 @@ func serviceStart() {
 	case "macos":
 		label := internal.ServiceLabelMacOS()
 		plist := "/Library/LaunchDaemons/" + label + ".plist"
-		// Bootstrap (idempotent if already loaded)
-		runCmd("sudo", "launchctl", "bootstrap", "system", plist)
-		// Kickstart
-		runCmd("sudo", "launchctl", "kickstart", "-k", "system/"+label)
+		// bootstrap fails when the daemon is already loaded; kickstart proves it can run.
+		runCmdIgnoreError("sudo", "launchctl", "bootstrap", "system", plist)
+		runCmdRequired("sudo", "launchctl", "kickstart", "-k", "system/"+label)
 	default:
-		runCmd("sudo", "systemctl", "start", internal.ServiceNameLinux())
+		runCmdRequired("sudo", "systemctl", "start", internal.ServiceNameLinux())
 	}
 	fmt.Println("✅ 服务已启动。")
 }
@@ -88,9 +87,9 @@ func serviceStop() {
 	case "macos":
 		label := internal.ServiceLabelMacOS()
 		plist := "/Library/LaunchDaemons/" + label + ".plist"
-		runCmd("sudo", "launchctl", "bootout", "system", plist)
+		runCmdRequired("sudo", "launchctl", "bootout", "system", plist)
 	default:
-		runCmd("sudo", "systemctl", "stop", internal.ServiceNameLinux())
+		runCmdRequired("sudo", "systemctl", "stop", internal.ServiceNameLinux())
 	}
 	fmt.Println("⚠ 服务已停止。")
 }
@@ -101,10 +100,11 @@ func serviceRestart() {
 	case "macos":
 		label := internal.ServiceLabelMacOS()
 		plist := "/Library/LaunchDaemons/" + label + ".plist"
-		runCmd("sudo", "launchctl", "bootstrap", "system", plist)
-		runCmd("sudo", "launchctl", "kickstart", "-k", "system/"+label)
+		runCmdIgnoreError("sudo", "launchctl", "bootout", "system", plist)
+		runCmdRequired("sudo", "launchctl", "bootstrap", "system", plist)
+		runCmdRequired("sudo", "launchctl", "kickstart", "-k", "system/"+label)
 	default:
-		runCmd("sudo", "systemctl", "restart", internal.ServiceNameLinux())
+		runCmdRequired("sudo", "systemctl", "restart", internal.ServiceNameLinux())
 	}
 	fmt.Println("✅ 服务已重启。")
 }
@@ -143,9 +143,20 @@ func serviceLog() {
 }
 
 // runCmd executes a command and prints its output. Used for service management.
-func runCmd(name string, args ...string) {
+func runCmd(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	_ = cmd.Run()
+	return cmd.Run()
+}
+
+func runCmdRequired(name string, args ...string) {
+	if err := runCmd(name, args...); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ 命令执行失败: %s %v: %v\n", name, args, err)
+		os.Exit(1)
+	}
+}
+
+func runCmdIgnoreError(name string, args ...string) {
+	_ = runCmd(name, args...)
 }
