@@ -84,9 +84,11 @@ jobs:
       - name: Compute SHA256
         id: shas
         run: |
-          echo "linux_amd64_sha=$(sha256sum sbc-linux-amd64 | cut -d' ' -f1)" >> "$GITHUB_ENV"
-          echo "linux_arm64_sha=$(sha256sum sbc-linux-arm64 | cut -d' ' -f1)" >> "$GITHUB_ENV"
-          echo "darwin_arm_sha=$(sha256sum sbc-darwin-arm64 | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          {
+            echo "linux_amd64_sha=$(sha256sum sbc-linux-amd64 | cut -d' ' -f1)"
+            echo "linux_arm64_sha=$(sha256sum sbc-linux-arm64 | cut -d' ' -f1)"
+            echo "darwin_arm_sha=$(sha256sum sbc-darwin-arm64 | cut -d' ' -f1)"
+          } >> "$GITHUB_ENV"
 
       - name: Generate zsh completion and compute SHA
         run: |
