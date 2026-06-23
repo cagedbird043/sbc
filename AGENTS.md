@@ -3,7 +3,7 @@
 ## 架构
 
 ```
-.env (SBC_CONFIG_URLS)
+sbc.toml (sbc_config_urls)
   → ReadEnvURLs()
     → DownloadConfigs() → temp dir → SHA256 proof (meta.json)
       → VerifyDownloads() → active variant check
@@ -36,7 +36,7 @@ https://hk-edge.cagedbird.cn/sbc-config/<secret>/{linux,macos,android}/config-re
 
 ## 数据流
 
-1. `readEnvURLs()` — 从 `.env` 读 `SBC_CONFIG_URLS`（逗号+引号分隔）
+1. ReadEnvURLs() — 从 sbc.toml 读 sbc_config_urls
 2. `DownloadConfigs()` — 下载所有 URL，校验 meta.json sha256
 3. `VerifyDownloads()` — 比对声明/成功数量，激活变体必须存在
 4. 复制到 `~/.config/sing-box/`
