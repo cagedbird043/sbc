@@ -104,15 +104,22 @@ func clashAPIRequest(method, path, secret string, body io.Reader) (*http.Respons
 	return client.Do(req)
 }
 
-// getClashSecret loads the CLASH_API_SECRET from .env.
+// getClashSecret loads the clash_api_secret from sbc.toml.
 func getClashSecret() (string, error) {
 	vars, err := internal.LoadEnv()
 	if err != nil {
-		return "", fmt.Errorf("无法加载 .env: %w", err)
+		return "", fmt.Errorf("无法加载配置: %w", err)
 	}
-	secret := vars["CLASH_API_SECRET"]
-	if secret == "" {
-		return "", fmt.Errorf("缺少 CLASH_API_SECRET，无法访问 9090 控制接口。")
+	rawSecret, ok := vars["clash_api_secret"]
+	if !ok || rawSecret == nil {
+		rawSecret, ok = vars["CLASH_API_SECRET"]
+	}
+	if !ok || rawSecret == nil {
+		return "", fmt.Errorf("缺少 clash_api_secret，无法访问 9090 控制接口。")
+	}
+	secret, ok := rawSecret.(string)
+	if !ok || secret == "" {
+		return "", fmt.Errorf("clash_api_secret 不是有效的字符串")
 	}
 	return secret, nil
 }

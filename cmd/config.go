@@ -245,7 +245,7 @@ func configDiff() {
 }
 
 func configEnv() {
-	envFile, _ := internal.EnvFilePath()
+	configFile, _ := internal.ConfigFilePath()
 
 	vars, err := internal.LoadEnv()
 	if err != nil {
@@ -253,23 +253,45 @@ func configEnv() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("env_file=%s\n", envFile)
-	printEnvVal(vars, "CLASH_API_SECRET")
-	printEnvVal(vars, "MIXED_PROXY_USERNAME")
-	printEnvVal(vars, "MIXED_PROXY_PASSWORD")
-	printEnvVal(vars, "PROVIDER_NAME_1")
-	if sub := vars["SUB_URL_1"]; sub != "" {
-		fmt.Printf("SUB_URL_1=已设置（%d 字符）\n", len(sub))
-	} else {
-		fmt.Println("SUB_URL_1=未设置")
+	fmt.Printf("config_file=%s\n", configFile)
+	printEnvVal(vars, "clash_api_secret")
+	printEnvVal(vars, "mixed_proxy_username")
+	printEnvVal(vars, "mixed_proxy_password")
+	printEnvVal(vars, "provider_name_1")
+
+	rawSub, ok := vars["sub_url_1"]
+	if !ok || rawSub == nil {
+		rawSub, ok = vars["SUB_URL_1"]
 	}
-	printEnvVal(vars, "TAILNET_AUTH_KEY")
+	if ok && rawSub != nil {
+		if sub, ok := rawSub.(string); ok && sub != "" {
+			fmt.Printf("sub_url_1=已设置（%d 字符）\n", len(sub))
+		} else {
+			fmt.Println("sub_url_1=未设置")
+		}
+	} else {
+		fmt.Println("sub_url_1=未设置")
+	}
+	printEnvVal(vars, "tailnet_auth_key")
 }
 
-func printEnvVal(vars map[string]string, key string) {
-	if val, ok := vars[key]; ok && val != "" {
-		fmt.Printf("%s=已设置\n", key)
-	} else {
-		fmt.Printf("%s=未设置\n", key)
+func printEnvVal(vars map[string]interface{}, key string) {
+	lowerKey := strings.ToLower(key)
+	val, ok := vars[lowerKey]
+	if !ok || val == nil {
+		val, ok = vars[key]
 	}
+	if ok && val != nil {
+		if str, ok := val.(string); ok && str != "" {
+			fmt.Printf("%s=已设置\n", lowerKey)
+			return
+		} else if _, ok := val.(bool); ok {
+			fmt.Printf("%s=已设置\n", lowerKey)
+			return
+		} else if slice, ok := val.([]interface{}); ok && len(slice) > 0 {
+			fmt.Printf("%s=已设置\n", lowerKey)
+			return
+		}
+	}
+	fmt.Printf("%s=未设置\n", lowerKey)
 }

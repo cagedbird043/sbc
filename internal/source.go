@@ -18,40 +18,6 @@ type metaInfo struct {
 	SHA256 string `json:"sha256"`
 }
 
-// ReadEnvURLs reads SBC_CONFIG_URLS from ~/.config/sing-box/.env.
-// Expected format: SBC_CONFIG_URLS="url1","url2" (comma-separated, each double-quoted).
-func ReadEnvURLs() ([]string, error) {
-	envPath, err := EnvFilePath()
-	if err != nil {
-		return nil, fmt.Errorf("无法获取 .env 路径: %w", err)
-	}
-	vars, err := ReadEnvFile(envPath)
-	if err != nil {
-		return nil, fmt.Errorf("读取 .env 失败: %w", err)
-	}
-	raw, ok := vars["SBC_CONFIG_URLS"]
-	if !ok || raw == "" {
-		return nil, fmt.Errorf("未在 %s 中找到 SBC_CONFIG_URLS", envPath)
-	}
-
-	// Parse comma-separated quoted URLs.
-	// After ReadEnvFile strips surrounding quotes, the value looks like:
-	//   url1","url2
-	// Split by the inner separator "," and trim remaining quotes.
-	parts := strings.Split(raw, "\",\"")
-	var urls []string
-	for _, p := range parts {
-		u := strings.Trim(p, "\"")
-		u = strings.TrimSpace(u)
-		if u != "" {
-			urls = append(urls, u)
-		}
-	}
-	if len(urls) == 0 {
-		return nil, fmt.Errorf("SBC_CONFIG_URLS 为空或格式错误")
-	}
-	return urls, nil
-}
 
 // DownloadConfigs downloads all config URLs to a temporary directory.
 // For each .json URL, it also downloads the corresponding .meta.json and

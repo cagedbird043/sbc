@@ -54,6 +54,15 @@ func EnvFilePath() (string, error) {
 	return filepath.Join(confDir, ".env"), nil
 }
 
+// ConfigFilePath returns $HOME/.config/sing-box/sbc.toml.
+func ConfigFilePath() (string, error) {
+	confDir, err := ConfDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(confDir, "sbc.toml"), nil
+}
+
 // VariantStateFile returns $HOME/.config/sing-box/config-variant.
 func VariantStateFile() (string, error) {
 	confDir, err := ConfDir()

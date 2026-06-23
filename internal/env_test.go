@@ -183,12 +183,12 @@ func TestReadEnvFileTrailingWhitespace(t *testing.T) {
 }
 
 func TestRequireEnvVars(t *testing.T) {
-	vars := map[string]string{
-		"CLASH_API_SECRET":     "secret",
-		"MIXED_PROXY_USERNAME": "user",
-		"MIXED_PROXY_PASSWORD": "pass",
-		"PROVIDER_NAME_1":      "provider",
-		"SUB_URL_1":            "url",
+	vars := map[string]interface{}{
+		"clash_api_secret":     "secret",
+		"mixed_proxy_username": "user",
+		"mixed_proxy_password": "pass",
+		"provider_name_1":      "provider",
+		"sub_url_1":            "url",
 	}
 
 	if missing := RequireEnvVars(vars); len(missing) > 0 {
@@ -197,28 +197,28 @@ func TestRequireEnvVars(t *testing.T) {
 }
 
 func TestRequireEnvVarsMissing(t *testing.T) {
-	vars := map[string]string{
-		"CLASH_API_SECRET": "secret",
-		// MIXED_PROXY_USERNAME missing
-		"MIXED_PROXY_PASSWORD": "pass",
-		// PROVIDER_NAME_1 missing
-		"SUB_URL_1": "url",
+	vars := map[string]interface{}{
+		"clash_api_secret": "secret",
+		// mixed_proxy_username missing
+		"mixed_proxy_password": "pass",
+		// provider_name_1 missing
+		"sub_url_1": "url",
 	}
 
 	missing := RequireEnvVars(vars)
 	if len(missing) != 2 {
 		t.Fatalf("expected 2 missing vars, got %d: %v", len(missing), missing)
 	}
-	if missing[0] != "MIXED_PROXY_USERNAME" {
-		t.Errorf("expected MIXED_PROXY_USERNAME first, got %s", missing[0])
+	if missing[0] != "mixed_proxy_username" {
+		t.Errorf("expected mixed_proxy_username first, got %s", missing[0])
 	}
-	if missing[1] != "PROVIDER_NAME_1" {
-		t.Errorf("expected PROVIDER_NAME_1 second, got %s", missing[1])
+	if missing[1] != "provider_name_1" {
+		t.Errorf("expected provider_name_1 second, got %s", missing[1])
 	}
 }
 
 func TestRequireEnvVarsEmpty(t *testing.T) {
-	vars := map[string]string{}
+	vars := map[string]interface{}{}
 	missing := RequireEnvVars(vars)
 	if len(missing) != 5 {
 		t.Errorf("expected 5 missing vars, got %d", len(missing))
@@ -231,10 +231,10 @@ func TestRequireEnvFile(t *testing.T) {
 	os.Setenv("HOME", dir)
 	defer os.Setenv("HOME", origHome)
 
-	// No .env file exists
+	// No sbc.toml file exists
 	err := RequireEnvFile()
 	if err == nil {
-		t.Fatal("expected error when no .env exists, got nil")
+		t.Fatal("expected error when no sbc.toml exists, got nil")
 	}
 }
 
@@ -248,8 +248,8 @@ func TestLoadEnv(t *testing.T) {
 	if err := os.MkdirAll(confDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	envFile := filepath.Join(confDir, ".env")
-	if err := os.WriteFile(envFile, []byte("KEY=value\n"), 0644); err != nil {
+	tomlFile := filepath.Join(confDir, "sbc.toml")
+	if err := os.WriteFile(tomlFile, []byte("key = \"value\"\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -257,7 +257,7 @@ func TestLoadEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadEnv failed: %v", err)
 	}
-	if vars["KEY"] != "value" {
-		t.Errorf("KEY = %q, want 'value'", vars["KEY"])
+	if vars["key"] != "value" {
+		t.Errorf("key = %q, want 'value'", vars["key"])
 	}
 }

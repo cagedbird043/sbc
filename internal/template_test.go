@@ -6,105 +6,65 @@ import (
 	"testing"
 )
 
-// ── TestExpandEnvsubst ────────────────────────────────────────────────────
+// ── TestStripJSONCComments & TestResolvePlaceholders ──────────────────────────────────
 
-func TestExpandEnvsubst(t *testing.T) {
-	vars := map[string]string{
-		"CLASH_API_SECRET":     "mysecret",
-		"MIXED_PROXY_USERNAME": "user",
-		"MIXED_PROXY_PASSWORD": "pass",
-		"SUB_URL_1":            "https://example.com/sub",
-		"EMPTY_VAR":            "",
-		"HOSTNAME":             "hk-edge",
-	}
-
+func TestStripJSONCComments(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
 		expected string
 	}{
 		{
-			name:     "dollar-var simple",
-			input:    "$CLASH_API_SECRET",
-			expected: "mysecret",
+			name:     "single line comment",
+			input:    `{"a": 1} // comment`,
+			expected: `{"a": 1} `,
 		},
 		{
-			name:     "brace-var",
-			input:    "${CLASH_API_SECRET}",
-			expected: "mysecret",
+			name:     "multi line comment",
+			input:    `{"a": /* comment */ 1}`,
+			expected: `{"a":  1}`,
 		},
 		{
-			name:     "double-dollar becomes literal dollar",
-			input:    "$$not_a_var",
-			expected: "$",
-		},
-		{
-			name:     "mixed literal and var",
-			input:    "http://127.0.0.1:9090?secret=$CLASH_API_SECRET",
-			expected: "http://127.0.0.1:9090?secret=mysecret",
-		},
-		{
-			name:     "multiple vars",
-			input:    "$MIXED_PROXY_USERNAME:$MIXED_PROXY_PASSWORD",
-			expected: "user:pass",
-		},
-		{
-			name:     "missing variable replaced with empty",
-			input:    "$NONEXISTENT",
-			expected: "",
-		},
-		{
-			name:     "var followed by underscore is part of var name",
-			input:    "BEFORE_$NONEXISTENT_AFTER",
-			expected: "BEFORE_",
-		},
-		{
-			name:     "brace-var with underscores",
-			input:    "${MIXED_PROXY_USERNAME}@${HOSTNAME}",
-			expected: "user@hk-edge",
-		},
-		{
-			name:     "empty value variable",
-			input:    "value=[${EMPTY_VAR}]",
-			expected: "value=[]",
-		},
-		{
-			name:     "url with var",
-			input:    "${SUB_URL_1}",
-			expected: "https://example.com/sub",
-		},
-		{
-			name:     "no vars",
-			input:    "plain text no variables",
-			expected: "plain text no variables",
-		},
-		{
-			name:     "dollar at end of string",
-			input:    "trailing$",
-			expected: "trailing$",
-		},
-		{
-			name:     "dollar followed by space not a var",
-			input:    "$ NOT_A_VAR",
-			expected: "$ NOT_A_VAR",
+			name:     "comment in string is preserved",
+			input:    `{"url": "https://example.com"}`,
+			expected: `{"url": "https://example.com"}`,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := expandEnvsubst(tc.input, vars)
+			got := stripJSONCComments(tc.input)
 			if got != tc.expected {
-				t.Errorf("expandEnvsubst(%q) = %q, want %q", tc.input, got, tc.expected)
+				t.Errorf("stripJSONCComments(%q) = %q, want %q", tc.input, got, tc.expected)
 			}
 		})
 	}
 }
 
-func TestExpandEnvsubstNoVars(t *testing.T) {
-	// Empty vars map — all variables should be replaced with empty
-	got := expandEnvsubst("hello $NONEXISTENT world", nil)
-	if got != "hello  world" {
-		t.Errorf("expected 'hello  world', got %q", got)
+func TestResolvePlaceholders(t *testing.T) {
+	config := map[string]interface{}{
+		"port":      1080,
+		"username":  "testuser",
+		"addresses": []interface{}{"1.1.1.1", "8.8.8.8"},
+	}
+
+	inputMap := map[string]interface{}{
+		"port":      "sbc:port",
+		"user":      "sbc:username",
+		"addresses": "sbc:addresses",
+		"plain":     "just string",
+	}
+
+	resolved := resolvePlaceholders(inputMap, config).(map[string]interface{})
+
+	if resolved["port"] != 1080 {
+		t.Errorf("expected port to be 1080, got %v", resolved["port"])
+	}
+	if resolved["user"] != "testuser" {
+		t.Errorf("expected user to be 'testuser', got %v", resolved["user"])
+	}
+	if resolved["plain"] != "just string" {
+		t.Errorf("expected plain to be 'just string', got %v", resolved["plain"])
 	}
 }
 
@@ -115,16 +75,17 @@ func TestRenderProfile(t *testing.T) {
 
 	// Create a minimal config template
 	templateContent := `{
+  // comment
   "inbounds": [
     {
       "type": "mixed",
       "tag": "mixed-in",
       "listen": "127.0.0.1",
-      "listen_port": "$LISTEN_PORT",
+      "listen_port": "sbc:listen_port",
       "users": [
         {
-          "username": "${MIXED_PROXY_USERNAME}",
-          "password": "${MIXED_PROXY_PASSWORD}"
+          "username": "sbc:mixed_proxy_username",
+          "password": "sbc:mixed_proxy_password"
         }
       ]
     }
@@ -150,10 +111,10 @@ func TestRenderProfile(t *testing.T) {
 		os.Unsetenv("SBC_TEMPLATE_ROOT")
 	}()
 
-	vars := map[string]string{
-		"LISTEN_PORT":          "1080",
-		"MIXED_PROXY_USERNAME": "testuser",
-		"MIXED_PROXY_PASSWORD": "testpass",
+	vars := map[string]interface{}{
+		"listen_port":          1080,
+		"mixed_proxy_username": "testuser",
+		"mixed_proxy_password": "testpass",
 	}
 
 	outputPath := filepath.Join(dir, "rendered.json")
@@ -171,15 +132,14 @@ func TestRenderProfile(t *testing.T) {
 	rendered := string(data)
 
 	// Verify substitutions
-	if !contains(rendered, `"listen_port": "1080"`) &&
-		!contains(rendered, "1080") {
-		t.Errorf("LISTEN_PORT not found in rendered output:\n%s", rendered)
+	if !contains(rendered, `"listen_port": 1080`) {
+		t.Errorf("listen_port not found in rendered output:\n%s", rendered)
 	}
 	if !contains(rendered, "testuser") {
-		t.Errorf("MIXED_PROXY_USERNAME not found in rendered output:\n%s", rendered)
+		t.Errorf("mixed_proxy_username not found in rendered output:\n%s", rendered)
 	}
 	if !contains(rendered, "testpass") {
-		t.Errorf("MIXED_PROXY_PASSWORD not found in rendered output:\n%s", rendered)
+		t.Errorf("mixed_proxy_password not found in rendered output:\n%s", rendered)
 	}
 	if !contains(rendered, "inbounds") {
 		t.Errorf("inbounds key not found in rendered output")
@@ -190,7 +150,7 @@ func TestRenderProfileMissingTemplate(t *testing.T) {
 	dir := t.TempDir()
 	outputPath := filepath.Join(dir, "rendered.json")
 	// Use a non-existent template path
-	err := RenderProfile("/nonexistent/template.json", outputPath, map[string]string{"KEY": "VALUE"})
+	err := RenderProfile("/nonexistent/template.json", outputPath, map[string]interface{}{"KEY": "VALUE"})
 	if err == nil {
 		t.Fatal("expected error for missing template file, got nil")
 	}

@@ -43,7 +43,7 @@ func cmdOverview() {
 	variant := activeVariant()
 	variantDesc := variantDescription(variant)
 
-	envFile, _ := internal.EnvFilePath()
+	configFile, _ := internal.ConfigFilePath()
 	targetConf := internal.TargetConf()
 
 	// Template path: show local cache if available, else "URL 分发"
@@ -65,7 +65,7 @@ func cmdOverview() {
 	fmt.Printf("  平台:     %s\n", platform)
 	fmt.Printf("  模板:     %s\n", templateInfo)
 	fmt.Printf("  目标:     %s\n", targetConf)
-	fmt.Printf("  环境:     %s\n", envFile)
+	fmt.Printf("  配置:     %s\n", configFile)
 }
 
 // checkServiceStatus checks if the sing-box service is running.
@@ -93,20 +93,27 @@ func checkServiceStatus(platform string) string {
 
 // checkAPIStatus checks if the Clash API is accessible.
 func checkAPIStatus() string {
-	envFile, err := internal.EnvFilePath()
+	configFile, err := internal.ConfigFilePath()
 	if err != nil {
-		return "无 .env"
+		return "无配置"
 	}
-	if _, err := os.Stat(envFile); os.IsNotExist(err) {
-		return "无 .env"
+	if _, err := os.Stat(configFile); os.IsNotExist(err) {
+		return "无配置"
 	}
 
-	vars, err := readEnvFile(envFile)
+	vars, err := internal.LoadEnv()
 	if err != nil {
-		return "无 .env"
+		return "无配置"
 	}
-	secret := vars["CLASH_API_SECRET"]
-	if secret == "" {
+	rawSecret, ok := vars["clash_api_secret"]
+	if !ok || rawSecret == nil {
+		rawSecret, ok = vars["CLASH_API_SECRET"]
+	}
+	if !ok || rawSecret == nil {
+		return "无密钥"
+	}
+	secret, ok := rawSecret.(string)
+	if !ok || secret == "" {
 		return "无密钥"
 	}
 

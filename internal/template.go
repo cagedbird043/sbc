@@ -1,45 +1,106 @@
 package internal
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
+	"strings"
 )
 
-// expandEnvsubst replaces $VAR and ${VAR} with values from vars.
-// If a variable is not found, it's replaced with empty string (envsubst behavior).
-func expandEnvsubst(input string, vars map[string]string) string {
-	// Match ${VAR} first, then $VAR (alphanumeric + underscore only)
-	result := regexp.MustCompile(`\$\{([^}]+)\}`).ReplaceAllStringFunc(input, func(match string) string {
-		key := match[2 : len(match)-1]
-		if val, ok := vars[key]; ok {
-			return val
+func stripJSONCComments(s string) string {
+	var out strings.Builder
+	inStr := false
+	esc := false
+	runes := []rune(s)
+	n := len(runes)
+	i := 0
+	for i < n {
+		r := runes[i]
+		if inStr {
+			out.WriteRune(r)
+			if esc {
+				esc = false
+			} else if r == '\\' {
+				esc = true
+			} else if r == '"' {
+				inStr = false
+			}
+			i++
+			continue
 		}
-		return ""
-	})
-	result = regexp.MustCompile(`\$([A-Za-z_][A-Za-z0-9_]*)`).ReplaceAllStringFunc(result, func(match string) string {
-		key := match[1:]
-		if val, ok := vars[key]; ok {
-			return val
+		if r == '"' {
+			inStr = true
+			out.WriteRune(r)
+			i++
+			continue
 		}
-		return ""
-	})
-	return result
+		if r == '/' && i+1 < n && runes[i+1] == '/' {
+			i += 2
+			for i < n && runes[i] != '\n' && runes[i] != '\r' {
+				i++
+			}
+			continue
+		}
+		if r == '/' && i+1 < n && runes[i+1] == '*' {
+			i += 2
+			for i+1 < n && !(runes[i] == '*' && runes[i+1] == '/') {
+				i++
+			}
+			i += 2
+			continue
+		}
+		out.WriteRune(r)
+		i++
+	}
+	return out.String()
 }
 
-// RenderProfile reads the template at templatePath, substitutes variables
-// with envsubst semantics, and writes the result to outputPath.
-// The caller is responsible for choosing the correct template file (variant).
-func RenderProfile(templatePath, outputPath string, vars map[string]string) error {
+func resolvePlaceholders(val interface{}, config map[string]interface{}) interface{} {
+	switch v := val.(type) {
+	case map[string]interface{}:
+		for k, child := range v {
+			v[k] = resolvePlaceholders(child, config)
+		}
+		return v
+	case []interface{}:
+		for i, child := range v {
+			v[i] = resolvePlaceholders(child, config)
+		}
+		return v
+	case string:
+		if strings.HasPrefix(v, "sbc:") {
+			key := v[4:]
+			if resolved, ok := config[key]; ok {
+				return resolved
+			}
+		}
+		return v
+	default:
+		return v
+	}
+}
+
+func RenderProfile(templatePath, outputPath string, config map[string]interface{}) error {
 	tplContent, err := os.ReadFile(templatePath)
 	if err != nil {
 		return fmt.Errorf("无法读取模板文件 %s: %w", templatePath, err)
 	}
 
-	rendered := expandEnvsubst(string(tplContent), vars)
+	cleanJSON := stripJSONCComments(string(tplContent))
+	var parsed interface{}
+	if err := json.Unmarshal([]byte(cleanJSON), &parsed); err != nil {
+		return fmt.Errorf("解析模板 JSON 失败: %w", err)
+	}
 
-	if err := os.WriteFile(outputPath, []byte(rendered), 0600); err != nil {
+	resolved := resolvePlaceholders(parsed, config)
+
+	renderedBytes, err := json.MarshalIndent(resolved, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化渲染配置失败: %w", err)
+	}
+
+	if err := os.WriteFile(outputPath, renderedBytes, 0600); err != nil {
 		return fmt.Errorf("写入渲染结果失败: %w", err)
 	}
 
