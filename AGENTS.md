@@ -87,12 +87,15 @@ git tag v0.x.y && git push origin v0.x.y
 
 CI 自动：build（3 平台）→ checksums → GitHub Release → Homebrew 公式更新。
 
-## 本地构建
+## 本地构建与调试
 
 ```bash
 make build        # 编译到 ./sbc（ldflags 注入版本号）
-make install      # 编译 + 安装到 /usr/local/bin/sbc
 ```
+
+**绝对禁止混淆安装版本与调试版本**：
+- **开发调试**：直接运行本地编译之二进制（如 `./sbc`），绝对不要执行 `make install` 或安装到系统路径。
+- **日常使用**：统一使用包管理器（或 `packages.toml`）安装的稳定版。系统 `PATH` 维持 `brew` 优先级在前。
 
 ## 历史教训
 

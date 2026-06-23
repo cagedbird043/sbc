@@ -146,7 +146,7 @@ func init() {
 func configStatus() {
 	variant, _ := internal.ActiveConfigVariant()
 	templatePath, _ := internal.ActiveVariantTemplatePath()
-	envFile, _ := internal.EnvFilePath()
+	configFile, _ := internal.ConfigFilePath()
 	platform := internal.Platform()
 	profile := internal.Profile()
 	target := internal.TargetConf()
@@ -154,7 +154,7 @@ func configStatus() {
 	fmt.Printf("变体:       %s （%s）\n", variant, internal.VariantDescription(variant))
 	fmt.Printf("模板:       %s\n", templatePath)
 	fmt.Printf("目标:       %s\n", target)
-	fmt.Printf("环境变量:   %s\n", envFile)
+	fmt.Printf("配置文件:   %s\n", configFile)
 	fmt.Printf("平台:       %s\n", platform)
 	fmt.Printf("配置轨道:   %s\n", profile)
 	fmt.Printf("模板来源:   URL 分发\n")
