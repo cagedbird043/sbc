@@ -10,13 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var serviceCmd = &cobra.Command{
-	Use:   "service {start|stop|restart|status|log}",
-	Short: "管理 sing-box 服务",
-	Long:  "管理 sing-box 系统服务。Linux 使用 systemctl，macOS 使用 launchctl。",
-}
 
-var serviceStartCmd = &cobra.Command{
+var startCmd = &cobra.Command{
 	Use:   "start",
 	Short: "启动 sing-box 服务",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -24,7 +19,7 @@ var serviceStartCmd = &cobra.Command{
 	},
 }
 
-var serviceStopCmd = &cobra.Command{
+var stopCmd = &cobra.Command{
 	Use:   "stop",
 	Short: "停止 sing-box 服务",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -32,7 +27,7 @@ var serviceStopCmd = &cobra.Command{
 	},
 }
 
-var serviceRestartCmd = &cobra.Command{
+var restartCmd = &cobra.Command{
 	Use:   "restart",
 	Short: "重启 sing-box 服务",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -40,7 +35,7 @@ var serviceRestartCmd = &cobra.Command{
 	},
 }
 
-var serviceStatusCmd = &cobra.Command{
+var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "查看 sing-box 服务状态",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -48,7 +43,7 @@ var serviceStatusCmd = &cobra.Command{
 	},
 }
 
-var serviceLogCmd = &cobra.Command{
+var logCmd = &cobra.Command{
 	Use:   "log",
 	Short: "查看 sing-box 服务日志",
 	Long:  "Linux: journalctl -u sing-box -f -n 50\nmacOS: tail -f /opt/homebrew/var/log/sing-box.log",
@@ -58,12 +53,11 @@ var serviceLogCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(serviceCmd)
-	serviceCmd.AddCommand(serviceStartCmd)
-	serviceCmd.AddCommand(serviceStopCmd)
-	serviceCmd.AddCommand(serviceRestartCmd)
-	serviceCmd.AddCommand(serviceStatusCmd)
-	serviceCmd.AddCommand(serviceLogCmd)
+	rootCmd.AddCommand(startCmd)
+	rootCmd.AddCommand(stopCmd)
+	rootCmd.AddCommand(restartCmd)
+	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(logCmd)
 }
 
 func serviceStart() {

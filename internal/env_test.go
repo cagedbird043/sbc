@@ -142,7 +142,7 @@ EMPTY_LINE_AFTER=yes
 }
 
 func TestReadEnvFileMissingFile(t *testing.T) {
-	_, err := ReadEnvFile("/nonexistent/path/.env")
+	_, err := ReadEnvFile("/nonexistent/path/missing.config")
 	if err == nil {
 		t.Fatal("expected error for missing file, got nil")
 	}

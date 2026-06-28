@@ -19,7 +19,7 @@ func TestRootCommandExists(t *testing.T) {
 
 func TestSubCommandsRegistered(t *testing.T) {
 	expected := []string{
-		"service", "config", "proxy", "ui", "update", "validate",
+		"start", "stop", "restart", "status", "log", "config", "proxy", "ui", "update", "validate",
 		"check", "completion",
 	}
 
@@ -35,28 +35,17 @@ func TestSubCommandsRegistered(t *testing.T) {
 	}
 }
 
-func TestServiceSubCommandsRegistered(t *testing.T) {
+func TestServiceCommandsRegistered(t *testing.T) {
 	expected := []string{"start", "stop", "restart", "status", "log"}
 
-	var serviceSub *cobra.Command
-	for _, c := range rootCmd.Commands() {
-		if c.Name() == "service" {
-			serviceSub = c
-			break
-		}
-	}
-	if serviceSub == nil {
-		t.Fatal("service command not found")
-	}
-
 	seen := make(map[string]bool)
-	for _, c := range serviceSub.Commands() {
+	for _, c := range rootCmd.Commands() {
 		seen[c.Name()] = true
 	}
 
 	for _, name := range expected {
 		if !seen[name] {
-			t.Errorf("service subcommand %q not registered", name)
+			t.Errorf("service command %q not registered on root", name)
 		}
 	}
 }
@@ -223,7 +212,7 @@ func TestRootHelpDoesNotPanic(t *testing.T) {
 
 func TestSubCommandHelpDoesNotPanic(t *testing.T) {
 	subCommands := []string{
-		"service", "config", "proxy", "ui", "update", "validate",
+		"start", "stop", "restart", "status", "log", "config", "proxy", "ui", "update", "validate",
 		"check", "completion",
 	}
 
